@@ -1,0 +1,727 @@
+{
+  "name": "EOS Momentum Engine",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -2432,
+        96
+      ],
+      "id": "0f723df9-40e8-46d7-ad46-ca56f3aef279",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "resource": "project",
+        "id": "={{ $json.gid }}"
+      },
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        -1712,
+        0
+      ],
+      "id": "a0593c7e-1736-4d62-967c-40a83bd4dff1",
+      "name": "Get a project",
+      "credentials": {
+        "asanaApi": {
+          "id": "QgiFpeEsPIbyNrRk",
+          "name": "Asana account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "filters": {
+          "opt_fields": [
+            "gid",
+            "name",
+            "resource_type"
+          ],
+          "project": "={{ $json.gid }}"
+        }
+      },
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        -832,
+        96
+      ],
+      "id": "148e189c-90a1-41b2-8fdb-d23bbdb8d265",
+      "name": "Get many tasks",
+      "credentials": {
+        "asanaApi": {
+          "id": "QgiFpeEsPIbyNrRk",
+          "name": "Asana account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "id": "={{ $json.gid }}"
+      },
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        96
+      ],
+      "id": "e5197577-760c-4c4d-948f-3c35af085a9d",
+      "name": "Get a task",
+      "credentials": {
+        "asanaApi": {
+          "id": "QgiFpeEsPIbyNrRk",
+          "name": "Asana account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  var custom_fields = item.json.custom_fields;\n  for (const cf of custom_fields) {\n    if (cf.name.toLowerCase().includes(\"status\")) {\n      item.json.status = cf.display_value;\n    }\n  }\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        96
+      ],
+      "id": "dac8ad1b-ffb7-42b0-926f-89476f9a2cfa",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a904b4c4-6dfe-4cb5-9987-b09789ce453f",
+              "leftValue": "={{ $json.memberships[0].section.name.toLowerCase() }}",
+              "rightValue": "rock",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            },
+            {
+              "id": "e2ce95ea-700f-4fd0-b553-eaa615446413",
+              "leftValue": "={{ $json.memberships[0].project.gid }}",
+              "rightValue": "={{ $('Project Return').item.json.gid }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -448,
+        96
+      ],
+      "id": "dc5a280b-919a-45c2-8faa-ef3f3f85878d",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "resource": "subtask",
+        "operation": "getAll",
+        "taskId": "={{ $json.gid }}",
+        "returnAll": true,
+        "options": {
+          "opt_fields": [
+            "gid",
+            "name",
+            "resource_type",
+            "completed",
+            "completed_at",
+            "due_on",
+            "memberships",
+            "custom_fields",
+            "parent"
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        -32,
+        112
+      ],
+      "id": "e6725cb8-2914-4254-81d4-3167ce463782",
+      "name": "Get many subtasks",
+      "alwaysOutputData": true,
+      "credentials": {
+        "asanaApi": {
+          "id": "QgiFpeEsPIbyNrRk",
+          "name": "Asana account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rocks = $('Code in JavaScript').all();\nconst allMilestones = $('Get many subtasks').all();\n\nlet projectSummary = \"\";\n\nrocks.forEach(rock => {\n  const rockGid = rock.json.gid;\n  // Filter milestones belonging to this specific rock\n  const milestones = allMilestones.filter(m => m.json.parent.gid === rockGid);\n  \n  const completed = milestones.filter(m => m.json.completed).length;\n  const total = milestones.length;\n  const stagnant = milestones.filter(m => {\n    if (m.json.completed) return false;\n    const daysSince = (new Date() - new Date(m.json.modified_at)) / (1000 * 60 * 60 * 24);\n    return daysSince > 7;\n  });\n\n  projectSummary += `\\nROCK: ${rock.json.name} [Status: ${rock.json.health_status}]\\n`;\n  projectSummary += `Progress: ${completed}/${total} milestones done.\\n`;\n  \n  if (stagnant.length > 0) {\n    projectSummary += `⚠️ STAGNANT MILESTONES:\\n` + stagnant.map(s => `- ${s.json.name} (Last updated: ${s.json.modified_at})`).join('\\n') + '\\n';\n  }\n});\n\nreturn { summary_context: projectSummary };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        112
+      ],
+      "id": "c9698c87-565a-4724-8753-d438bbddcdc3",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "I have adjusted the JSON keys to match the client's \"Summary of Actions,\" \"Advanced Rocks,\" and \"Rocks Requiring Action\" terminology.\n\nSystem Message:\n\nYou are an expert EOS (Entrepreneurial Operating System) Integrator. Your task is to analyze a week's worth of project data and generate a \"Weekly Progress & Action Brief\" for a non-technical client.\n\n**MISSION:**\n\n1. **Summary of Actions:** Highlight what specific milestones moved forward or were completed.\n2. **Advanced Rocks:** Identify which 90-day Rocks made measurable progress based on milestone activity.\n3. **Rocks Requiring Action:** Flag Rocks that have stalled because no action was taken on their milestones in the last 7 days.\n\nJSON SCHEMA OUTPUT (MANDATORY):\n\nReturn ONLY a valid JSON object. No markdown, no filler.\n\n```json\n{\n  \"summary_of_actions_taken\": \"string (A high-level overview of the team's output this week)\",\n  \"advanced_rocks\": [\n    { \"rock_name\": \"string\", \"progress_made\": \"string (e.g., '2/5 milestones completed')\"}\n  ],\n  \"rocks_requiring_action\": [\n    { \"rock_name\": \"string\", \"reason\": \"string (e.g., 'No updates on 3 milestones for 8+ days')\"}\n  ],\n  \"overall_rock_health\": \"string (1-2 sentences on the overall momentum)\",\n  \"leadership_recommendations\": [\n    \"Action 1 (Immediate)\",\n    \"Action 2 (Strategy)\",\n    \"Action 3 (Accountability)\"\n  ]\n}\n```"
+            },
+            {
+              "content": "=Please analyze the following Project Context from the last 7 days:\n\n### PROJECT DATA ROLL-UP:\n\n{{ $json.summary_context }}\n\n### ANALYTICAL INSTRUCTIONS:\n\n1. **Identify Stagnancy:** Any Rock with milestones where `modified_at` is older than 7 days (or 'Never') must be listed in `rocks_requiring_action`.\n2. **Identify Advancement:** A Rock is considered \"Advanced\" if any of its milestones were `completed: true` or had a `modified_at` date within the last 7 days.\n3. **Summary of Actions:** Synthesize the \"Updated\" and \"Completed\" milestones into a narrative summary of what the team actually achieved this week.\n4. **Health Check:** If a Rock is \"Requiring Action\" and has more than 2 stagnant milestones, explicitly warn the client in the `overall_rock_health` section."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "textFormat": {
+            "textOptions": {
+              "type": "json_object"
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        112
+      ],
+      "id": "600dc3fa-88a8-4cd8-b744-2588d05f346c",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "P5vdYyS1abIzj3Tn",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A8ZSGS9LJ",
+          "mode": "list",
+          "cachedResultName": "all-eos-momentum-engine"
+        },
+        "messageType": "block",
+        "blocksUi": "={\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"📁 *Project:* {{ $('Project Return').first().json.name }}\"\n      }\n    },\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📝 Summary of Actions Taken\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"{{ $json.headline }}\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*🏆 Rocks Advanced This Week:*\\n{{ $json.updated_list }}\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*⚠️ Rocks Requiring Action:*\\n{{ $json.stagnant_list }}\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*📊 Overall Rock Health:*\\n{{ $json.health }}\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*🚀 Recommended Leadership Actions:*\\n{{ $json.actions_list }}\"\n      }\n    },\n    {\n      \"type\": \"context\",\n      \"elements\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"💡 _This summary was generated by the EOS Momentum Engine based on last week's Asana activity._\"\n        }\n      ]\n    }\n  ]\n}",
+        "text": "=",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1264,
+        112
+      ],
+      "id": "d6ed8229-3406-45f1-b093-acccb95528f2",
+      "name": "Send a message",
+      "webhookId": "6d83ae3a-d70a-47aa-8edd-898b1623c705",
+      "alwaysOutputData": true,
+      "credentials": {
+        "slackApi": {
+          "id": "MRKnxucnizhoVdxE",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Extract the JSON from the OpenAI response\n// The path matches your provided JSON: $json.output[0].content[0].text\nconst aiOutput = $json.output[0].content[0].text;\n\n// 2. Helper function to escape newlines for Slack Block Kit\nconst clean = (str) => {\n  if (typeof str !== 'string') return str || \"\";\n  return str.replace(/\\n/g, \"\\\\n\").replace(/\\r/g, \"\\\\n\");\n};\n\n// 3. Pre-format the arrays into Markdown strings\nconst formatList = (arr, templateFn) => {\n  if (!Array.isArray(arr) || arr.length === 0) return \"_No items reported._\";\n  return arr.map(templateFn).join('\\\\n');\n};\n\nreturn {\n  // Map 'summary_of_actions_taken' to the headline field\n  headline: clean(aiOutput.summary_of_actions_taken),\n  \n  // Map 'overall_rock_health' to the health field\n  health: clean(aiOutput.overall_rock_health),\n  \n  // Format the 'advanced_rocks' array\n  updated_list: clean(formatList(aiOutput.advanced_rocks, \n    item => `• *${item.rock_name}*: ${item.progress_made}`)),\n    \n  // Format the 'rocks_requiring_action' array\n  stagnant_list: clean(formatList(aiOutput.rocks_requiring_action, \n    item => `• *${item.rock_name}*: ${item.reason}`)),\n    \n  // Format the 'leadership_recommendations' array\n  actions_list: clean(formatList(aiOutput.leadership_recommendations, \n    action => `• ${action}`))\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        112
+      ],
+      "id": "762f85fa-4965-4260-84c9-73723d6659ff",
+      "name": "Code in JavaScript3"
+    },
+    {
+      "parameters": {
+        "resource": "project",
+        "operation": "getAll",
+        "workspace": "1197346829879",
+        "returnAll": true,
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.asana",
+      "typeVersion": 1,
+      "position": [
+        -2224,
+        96
+      ],
+      "id": "5c586bb6-4577-4a0c-8936-e97d0ccb87fd",
+      "name": "Get many projects",
+      "credentials": {
+        "asanaApi": {
+          "id": "QgiFpeEsPIbyNrRk",
+          "name": "Asana account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -1184,
+        -80
+      ],
+      "id": "36ad02f1-31d3-4f84-8e75-e64998e6db82",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8d091c89-5cf2-4ce5-9e1c-0e9b20c7bb24",
+              "leftValue": "={{ $json.name }}",
+              "rightValue": "/(Q\\d)\\s+(.*?)\\s+L-?10\\s/i",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -2016,
+        80
+      ],
+      "id": "b429eee6-f656-41df-9c75-a60d72c58903",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1008,
+        80
+      ],
+      "id": "0fbeb33a-b2cc-479f-ba26-1a9347e05c2b",
+      "name": "Project Return"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "828cba85-8226-41c0-ac14-0151fb2bed69",
+              "leftValue": "={{ $json.gid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        208,
+        -32
+      ],
+      "id": "b736b313-aaab-4dea-af26-5f9eb3d71f94",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node runs when a Rock has ZERO subtasks\nconst rocks = $('Code in JavaScript').all();\nconst projectGid = $('Project Return').first().json.gid;\n\nlet projectSummary = `PROJECT GID: ${projectGid}\\n`;\n\nrocks.forEach(rock => {\n  const rockGid = rock.json.gid;\n\n  projectSummary += `\\nROCK: ${rock.json.name} [GID: ${rockGid}] [Status: ${rock.json.health_status}]\\n`;\n  projectSummary += `⚠️ SYSTEM ALERT: No milestones/subtasks found for this Rock.\\n`;\n  projectSummary += `Note: Accountability cannot be tracked because no specific tasks are defined.\\n`;\n});\n\nreturn { \n  summary_context: projectSummary.trim(),\n  no_milestones_flag: true \n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -240
+      ],
+      "id": "eb2a0034-2888-4b0f-a163-638f20cd71ae",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "GPT-4O"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert EOS Integrator. You have been provided with project data where **no milestones have been defined** for the 90-day Rocks.\n\n**MISSION:**\n\n1. **Summary of Actions:** Inform the client that zero actions were captured because no task structure exists.\n2. **Advanced Rocks:** Report that no Rocks have advanced.\n3. **Rocks Requiring Action:** Flag all Rocks as \"Action Required\" because they lack the necessary milestones for accountability.\n\nJSON SCHEMA OUTPUT (MANDATORY):\n\n{\n\n\"summary_of_actions_taken\": \"No progress was recorded this week as no milestones are currently defined in Asana for these goals.\",\n\n\"advanced_rocks\": [],\n\n\"rocks_requiring_action\": [\n\n{ \"rock_name\": \"string\", \"reason\": \"Missing Milestone Structure\" }\n\n],\n\n\"overall_rock_health\": \"Critical: The project structure is incomplete. Without milestones, the team cannot track progress or maintain accountability.\",\n\n\"leadership_recommendations\": [\n\n\"Immediate: Define 3-5 milestones for each Rock listed above.\",\n\n\"Accountability: Assign owners to the newly created milestones.\",\n\n\"Process: Review the EOS Rock-setting process to ensure future tasks are populated.\"\n\n]\n\n}"
+            },
+            {
+              "content": "=Please analyze this Project Context (Note: No subtasks were found in the API fetch):\n\n### PROJECT DATA:\n\n{{ $json.summary_context }}\n\n### INSTRUCTIONS:\n\n1. Since there are no milestones, treat every Rock as \"Requiring Action.\"\n2. Your recommendations must focus on **project setup** and **defining tasks** rather than performance coaching.\n3. Return the JSON object matching the schema."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        -240
+      ],
+      "id": "13011258-e9ef-4695-890a-cfae8e865d24",
+      "name": "Message a model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "P5vdYyS1abIzj3Tn",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Extract the JSON from the \"No-Milestone\" OpenAI response\nconst aiOutput = $json.output[0].content[0].text;\n\n// 2. Helper function to escape newlines for Slack Block Kit\nconst clean = (str) => {\n  if (typeof str !== 'string') return str || \"\";\n  return str.replace(/\\n/g, \"\\\\n\").replace(/\\r/g, \"\\\\n\");\n};\n\n// 3. Pre-format the arrays into Markdown strings\n// Special handling for the empty 'advanced_rocks' array\nconst formatList = (arr, templateFn) => {\n  if (!Array.isArray(arr) || arr.length === 0) return \"_No Rocks have advanced (Missing Milestones)_\";\n  return arr.map(templateFn).join('\\\\n');\n};\n\nreturn {\n  // Map the new keys to your standard Slack Block variables\n  headline: clean(aiOutput.summary_of_actions_taken),\n  health: clean(aiOutput.overall_rock_health),\n  \n  // Format the 'advanced_rocks' (likely empty in this branch)\n  updated_list: clean(formatList(aiOutput.advanced_rocks, \n    item => `• *${item.rock_name}*: ${item.progress_made}`)),\n    \n  // Format the 'rocks_requiring_action' (the primary focus here)\n  stagnant_list: clean(formatList(aiOutput.rocks_requiring_action, \n    item => `• *${item.rock_name}*: ${item.reason}`)),\n    \n  // Format the 'leadership_recommendations'\n  actions_list: clean(formatList(aiOutput.leadership_recommendations, \n    action => `• ${action}`))\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1072,
+        -240
+      ],
+      "id": "c540921b-4d1f-40e8-8e4e-375f13b8bfd9",
+      "name": "Code in JavaScript4"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A8ZSGS9LJ",
+          "mode": "list",
+          "cachedResultName": "all-eos-momentum-engine"
+        },
+        "messageType": "block",
+        "blocksUi": "={\n  \"blocks\": [\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"📁 *Project:* {{ $('Project Return').first().json.name }}\"\n      }\n    },\n    {\n      \"type\": \"header\",\n      \"text\": {\n        \"type\": \"plain_text\",\n        \"text\": \"📝 Weekly EOS Summary\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*Summary of Actions Taken:*\\n{{ $json.headline }}\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*🏆 Rocks Advanced This Week:*\\n{{ $json.updated_list }}\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*⚠️ Rocks Requiring Action:*\\n{{ $json.stagnant_list }}\"\n      }\n    },\n    {\n      \"type\": \"divider\"\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*📊 Overall Rock Health:*\\n{{ $json.health }}\"\n      }\n    },\n    {\n      \"type\": \"section\",\n      \"text\": {\n        \"type\": \"mrkdwn\",\n        \"text\": \"*🚀 Recommended Leadership Actions:*\\n{{ $json.actions_list }}\"\n      }\n    },\n    {\n      \"type\": \"context\",\n      \"elements\": [\n        {\n          \"type\": \"mrkdwn\",\n          \"text\": \"💡 _This summary was generated by the EOS Momentum Engine based on last week's Asana activity._\"\n        }\n      ]\n    }\n  ]\n}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.4,
+      "position": [
+        1280,
+        -240
+      ],
+      "id": "a67e1c1a-d107-414d-bd16-0443c8af62ac",
+      "name": "Send a message1",
+      "webhookId": "b6b1658a-3f0a-48c4-b297-2940a96ebb7d",
+      "credentials": {
+        "slackApi": {
+          "id": "MRKnxucnizhoVdxE",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many projects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a project": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many tasks": {
+      "main": [
+        [
+          {
+            "node": "Get a task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a task": {
+      "main": [
+        [
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Get many subtasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many subtasks": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript3": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many projects": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Project Return",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Get a project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Project Return": {
+      "main": [
+        [
+          {
+            "node": "Get many tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript4": {
+      "main": [
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a message1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "626f5572-e40d-40b8-bec9-31287c01e6ae",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "4381ba9dcaafa5c99f1b4f494e8c9fe95713a73bc7ec9b6cbb3dd1974a66f7d2"
+  },
+  "id": "nKPcNtKQIX3FAgceEXDXY",
+  "tags": []
+}
